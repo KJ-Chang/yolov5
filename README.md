@@ -1,3 +1,28 @@
+## 各個 Branch 說明 | Branch Descriptions
+
+- **3-channel**  
+  僅使用 RGB 圖像作為輸入，輸出格式與原始 YOLOv5 相同。  
+  Uses only RGB images as input. The output format is the same as the original YOLOv5.
+
+- **4-channel**  
+  在 RGB 圖像之外加入一個雷達偵測通道 (`radar_detected`)，模型架構與輸出不變。  
+  Adds a `radar_detected` channel to the RGB image. Model architecture and output remain unchanged.
+
+- **5-channel**  
+  在 4-channel 的基礎上，加入一個深度通道 (`radar_depth`)，模型會額外預測每個 bounding box 的距離資訊。  
+  Builds upon the 4-channel version by adding a `radar_depth` channel. The model additionally predicts the depth (distance) for each bounding box.
+
+- **7-channel**  
+  在 5-channel 的基礎上，再加入兩個速度通道 (`radar_pos_velocity` 和 `radar_neg_velocity`)，模型除深度外，還會預測每個 bounding box 的速度資訊（區分正向與負向）。  
+  Builds upon the 5-channel version by adding two velocity channels (`radar_pos_velocity` and `radar_neg_velocity`). The model predicts both depth and directional velocity for each bounding box.
+
+## 訓練資料來源 | Dataset Source
+
+訓練所需的資料可透過我另外維護的專案 [yolov5-dataset-from-carla](https://github.com/KJ-Chang/yolov5-dataset-from-carla) 自動產生，該專案會使用 CARLA 模擬器生成標註完畢的影像與雷達資料，支援 3/4/5/7 通道的格式。  
+The training data can be automatically generated using my other repository [yolov5-dataset-from-carla](https://github.com/KJ-Chang/yolov5-dataset-from-carla), which uses the CARLA simulator to generate labeled images and radar data. It supports 3/4/5/7-channel formats.  
+
+---
+
 <div align="center">
   <p>
     <a href="https://www.ultralytics.com/events/yolovision" target="_blank">
