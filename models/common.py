@@ -879,7 +879,7 @@ class AutoShape(nn.Module):
                 files.append(Path(f).with_suffix(".jpg").name)
                 if im.shape[0] < 5:  # image in CHW
                     im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
-                im = im[..., :4] if im.ndim == 3 else cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)  # enforce 4ch input
+                im = im[..., :5] if im.ndim == 3 else cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)  # enforce 5ch input
                 s = im.shape[:2]  # HWC
                 shape0.append(s)  # image shape
                 g = max(size) / max(s)  # gain
@@ -920,7 +920,7 @@ class Detections:
         """Initializes the YOLOv5 Detections class with image info, predictions, filenames, timing and normalization."""
         super().__init__()
         d = pred[0].device  # device
-        gn = [torch.tensor([*(im.shape[i] for i in [1, 0, 1, 0]), 1, 1], device=d) for im in ims]  # normalizations
+        gn = [torch.tensor([*(im.shape[i] for i in [1, 0, 1, 0]), 1, 1, 1], device=d) for im in ims]  # normalizations
         self.ims = ims  # list of images as numpy arrays
         self.pred = pred  # list of tensors pred[0] = (xyxy, conf, cls)
         self.names = names  # class names

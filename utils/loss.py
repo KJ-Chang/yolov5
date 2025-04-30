@@ -141,7 +141,8 @@ class ComputeLoss:
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
-        tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
+        ldepth = torch.zeros(1, device=self.device)  # depth loss
+        tcls, tbox, tdepth, indices, anchors = self.build_targets(p, targets)  # targets
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
@@ -150,7 +151,10 @@ class ComputeLoss:
 
             if n := b.shape[0]:
                 # pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # faster, requires torch 1.8.0
-                pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 2, 1, self.nc), 1)  # target-subset of predictions
+                pxy, pwh, _, pcls, pdepth = pi[b, a, gj, gi].split((2, 2, 1, self.nc, 1), 1)  # target-subset of predictions
+
+                # depth loss
+                ldepth += self.depth_loss(pdepth.sigmoid(), tdepth[i])
 
                 # Regression
                 pxy = pxy.sigmoid() * 2 - 0.5
@@ -184,17 +188,19 @@ class ComputeLoss:
         lbox *= self.hyp["box"]
         lobj *= self.hyp["obj"]
         lcls *= self.hyp["cls"]
+        ldepth *= self.hyp['depth']
+
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        return (lbox + lobj + lcls + ldepth) * bs, torch.cat((lbox, lobj, lcls, ldepth)).detach()
 
     def build_targets(self, p, targets):
         """Prepares model targets from input targets (image,class,x,y,w,h) for loss computation, returning class, box,
         indices, and anchors.
         """
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
-        tcls, tbox, indices, anch = [], [], [], []
-        gain = torch.ones(7, device=self.device)  # normalized to gridspace gain
+        tcls, tbox, tdepth, indices, anch = [], [], [], [], []
+        gain = torch.ones(8, device=self.device)  # normalized to gridspace gain
         ai = torch.arange(na, device=self.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[..., None]), 2)  # append anchor indices
 
@@ -219,7 +225,7 @@ class ComputeLoss:
             gain[2:6] = torch.tensor(shape)[[3, 2, 3, 2]]  # xyxy gain
 
             # Match targets to anchors
-            t = targets * gain  # shape(3,n,7)
+            t = targets * gain  # shape(3,n,8) 
             if nt:
                 # Matches
                 r = t[..., 4:6] / anchors[:, None]  # wh ratio
@@ -240,7 +246,8 @@ class ComputeLoss:
                 offsets = 0
 
             # Define
-            bc, gxy, gwh, a = t.chunk(4, 1)  # (image, class), grid xy, grid wh, anchors
+            # bc, gxy, gwh, a = t.chunk(4, 1)  # (image, class), grid xy, grid wh, depth, anchors
+            bc, gxy, gwh, depth, a = t[:, :2], t[:, 2:4], t[:, 4:6], t[:, 6:7], t[:, 7:8]
             a, (b, c) = a.long().view(-1), bc.long().T  # anchors, image, class
             gij = (gxy - offsets).long()
             gi, gj = gij.T  # grid indices
@@ -250,5 +257,15 @@ class ComputeLoss:
             tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
             anch.append(anchors[a])  # anchors
             tcls.append(c)  # class
+            tdepth.append(depth) # depth
 
-        return tcls, tbox, indices, anch
+        return tcls, tbox, tdepth, indices, anch
+
+    def depth_loss(self, p_depth, t_depth, weight_factor = 5):
+        max_weight = 10
+        depth_weight = torch.clamp((1 / (t_depth + 1e-6)), max = max_weight)
+
+        loss = torch.abs(p_depth - t_depth)
+        smooth_l1_loss = torch.where(loss < weight_factor, 0.5 * loss ** 2, loss - 0.5 * weight_factor)
+
+        return (smooth_l1_loss * depth_weight).sum()

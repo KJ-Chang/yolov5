@@ -91,6 +91,7 @@ class Loggers:
             "train/box_loss",
             "train/obj_loss",
             "train/cls_loss",  # train loss
+            "train/depth_loss",
             "metrics/precision",
             "metrics/recall",
             "metrics/mAP_0.5",
@@ -98,6 +99,7 @@ class Loggers:
             "val/box_loss",
             "val/obj_loss",
             "val/cls_loss",  # val loss
+            "val/depth_loss",
             "x/lr0",
             "x/lr1",
             "x/lr2",
@@ -193,7 +195,7 @@ class Loggers:
 
     def on_train_batch_end(self, model, ni, imgs, targets, paths, vals):
         """Logs training batch end events, plots images, and updates external loggers with batch-end data."""
-        log_dict = dict(zip(self.keys[:3], vals))
+        log_dict = dict(zip(self.keys[:4], vals))
         # Callback runs on train batch end
         # ni: number integrated batches (since train start)
         if self.plots:
@@ -460,7 +462,7 @@ def log_tensorboard_graph(tb, model, imgsz=(640, 640)):
     try:
         p = next(model.parameters())  # for device, type
         imgsz = (imgsz, imgsz) if isinstance(imgsz, int) else imgsz  # expand
-        im = torch.zeros((1, 4, *imgsz)).to(p.device).type_as(p)  # input image (WARNING: must be zeros, not empty)
+        im = torch.zeros((1, 5, *imgsz)).to(p.device).type_as(p)  # input image (WARNING: must be zeros, not empty)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # suppress jit trace warning
             tb.add_graph(torch.jit.trace(de_parallel(model), im, strict=False), [])

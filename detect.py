@@ -33,7 +33,11 @@ import csv
 import os
 import platform
 import sys
+import numpy as np
 from pathlib import Path
+sys.path.append('../carla_0.9.15/PythonAPI/examples/')
+import kj_config as config
+from kj_utils.data import yolo_label_xywh_to_4vertexs
 
 import torch
 
@@ -180,7 +184,7 @@ def run(
     vid_path, vid_writer = [None] * bs, [None] * bs
 
     # Run inference
-    model.warmup(imgsz=(1 if pt or model.triton else bs, 4, *imgsz))  # warmup
+    model.warmup(imgsz=(1 if pt or model.triton else bs, 5, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(device=device), Profile(device=device), Profile(device=device))
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
@@ -235,13 +239,16 @@ def run(
             else:
                 p, im0, frame = path, im0s.copy(), getattr(dataset, "frame", 0)
 
+            p_groundtruth = p.replace('images', 'labels').replace('.npy', '.txt')
+            ori_im = im0.copy()
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # im.jpg
             txt_path = str(save_dir / "labels" / p.stem) + ("" if dataset.mode == "image" else f"_{frame}")  # im.txt
             s += "{:g}x{:g} ".format(*im.shape[2:])  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
-            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            annotator = Annotator(np.ascontiguousarray(im0[:, :, :4]), line_width=line_thickness, example=str(names))
+            annotator.sf = 0.25
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
@@ -252,7 +259,7 @@ def run(
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in reversed(det):
+                for *xyxy, conf, cls, depth in reversed(det):
                     c = int(cls)  # integer class
                     label = names[c] if hide_conf else f"{names[c]}"
                     confidence = float(conf)
@@ -268,13 +275,13 @@ def run(
                             )  # normalized xywh
                         else:
                             coords = (torch.tensor(xyxy).view(1, 4) / gn).view(-1).tolist()  # xyxy
-                        line = (cls, *coords, conf) if save_conf else (cls, *coords)  # label format
+                        line = (cls, *coords, conf, depth) if save_conf else (cls, *coords, depth)  # label format
                         with open(f"{txt_path}.txt", "a") as f:
                             f.write(("%g " * len(line)).rstrip() % line + "\n")
 
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
-                        label = None if hide_labels else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
+                        label = None if hide_labels else (names[c] if hide_conf else f"{names[c]} {conf:.2f} {depth:.2f}")
                         annotator.box_label(xyxy, label, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / "crops" / names[c] / f"{p.stem}.jpg", BGR=True)
@@ -292,7 +299,30 @@ def run(
             # Save results (image with detections)
             if save_img:
                 if dataset.mode == "image":
-                    cv2.imwrite(save_path, im0[:, :, :3])
+                    with open(p_groundtruth, 'r') as f:
+                        g_annotator = Annotator(np.ascontiguousarray(ori_im[:, :, :4]), line_width=line_thickness, example=str(names))
+                        g_annotator.sf = 0.25
+
+                        lines = f.readlines()
+                        if len(lines) > 0:
+                            ori_im = cv2.UMat(ori_im)
+                            for line in lines:
+                                gcls, gx, gy, gw, gh, gdep = line.strip().split()
+                                xmin, ymin, xmax, ymax = yolo_label_xywh_to_4vertexs(float(gx), float(gy), float(gw), float(gh), im0.shape[1], im0.shape[0])
+                                gxyxy = [torch.tensor(float(xmin)), torch.tensor(float(ymin)), torch.tensor(float(xmax)), torch.tensor(float(ymax))]
+                                gc = int(gcls)
+                                glabel = f'{config.CLASS_ID_NAMES[gc]} {gdep}'
+                                g_annotator.box_label(gxyxy, glabel, color=colors(gc, True))
+
+                        gim0 = g_annotator.result()
+                        dividing_line = np.ones((5, im0.shape[1], 3), dtype = np.uint8) * 255
+                        compare_im = np.zeros((im0.shape[0] * 2 + dividing_line.shape[0], im0.shape[1], 3), dtype=np.uint8) # 上: detect 下:groundtruth
+                        compare_im[:im0.shape[0], :, :] = im0[:, :, :3]
+                        compare_im[im0.shape[0]:im0.shape[0]+dividing_line.shape[0], :, :] = dividing_line
+                        compare_im[dividing_line.shape[0]+im0.shape[0]:, :, :] = gim0[:, :, :3]
+                        cv2.imwrite(save_path.replace('.npy', '.png'), compare_im)
+                        
+                    # cv2.imwrite(save_path.replace('.npy', '.png'), im0[:, :, :3])
                 else:  # 'video' or 'stream'
                     if vid_path[i] != save_path:  # new video
                         vid_path[i] = save_path
@@ -392,7 +422,7 @@ def parse_opt():
     parser.add_argument("--visualize", action="store_true", help="visualize features")
     parser.add_argument("--update", action="store_true", help="update all models")
     parser.add_argument("--project", default=ROOT / "detect", help="save results to project/name")
-    parser.add_argument("--name", default="4ch", help="save results to project/name")
+    parser.add_argument("--name", default="5ch", help="save results to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
     parser.add_argument("--line-thickness", default=3, type=int, help="bounding box thickness (pixels)")
     parser.add_argument("--hide-labels", default=False, action="store_true", help="hide labels")

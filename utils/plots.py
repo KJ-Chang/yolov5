@@ -142,9 +142,9 @@ def output_to_target(output, max_det=300):
     """
     targets = []
     for i, o in enumerate(output):
-        box, conf, cls = o[:max_det, :6].cpu().split((4, 1, 1), 1)
+        box, conf, cls, depth = o[:max_det, :7].cpu().split((4, 1, 1, 1), 1)
         j = torch.full((conf.shape[0], 1), i)
-        targets.append(torch.cat((j, cls, xyxy2xywh(box), conf), 1))
+        targets.append(torch.cat((j, cls, xyxy2xywh(box), conf, depth), 1))
     return torch.cat(targets, 0).numpy()
 
 
@@ -192,8 +192,9 @@ def plot_images(images, targets, paths=None, fname="images.jpg", names=None):
             ti = targets[targets[:, 0] == i]  # image targets
             boxes = xywh2xyxy(ti[:, 2:6]).T
             classes = ti[:, 1].astype("int")
-            labels = ti.shape[1] == 6  # labels if no conf column
+            labels = ti.shape[1] == 7  # labels if no conf column
             conf = None if labels else ti[:, 6]  # check for confidence presence (label vs pred)
+            depth = None if labels else ti[:, 7]
 
             if boxes.shape[1]:
                 if boxes.max() <= 1.01:  # if normalized with tolerance 0.01
@@ -208,7 +209,7 @@ def plot_images(images, targets, paths=None, fname="images.jpg", names=None):
                 color = colors(cls)
                 cls = names[cls] if names else cls
                 if labels or conf[j] > 0.25:  # 0.25 conf thresh
-                    label = f"{cls}" if labels else f"{cls} {conf[j]:.1f}"
+                    label = f"{cls}" if labels else f"{cls} {conf[j]:.1f} {depth[j]:.1f}"
                     annotator.box_label(box, label, color=color)
     annotator.im.save(fname)  # save
 
@@ -328,7 +329,7 @@ def plot_val_study(file="", dir="", x=None):
 def plot_labels(labels, names=(), save_dir=Path("")):
     """Plots dataset labels, saving correlogram and label images, handles classes, and visualizes bounding boxes."""
     LOGGER.info(f"Plotting labels to {save_dir / 'labels.jpg'}... ")
-    c, b = labels[:, 0], labels[:, 1:].transpose()  # classes, boxes
+    c, b, _ = labels[:, 0], labels[:, 1:-1].transpose(), labels[-1]  # classes, boxes, depth
     nc = int(c.max() + 1)  # number of classes
     x = pd.DataFrame(b.transpose(), columns=["x", "y", "width", "height"])
 
@@ -354,9 +355,9 @@ def plot_labels(labels, names=(), save_dir=Path("")):
 
     # rectangles
     labels[:, 1:3] = 0.5  # center
-    labels[:, 1:] = xywh2xyxy(labels[:, 1:]) * 2000
+    labels[:, 1:-1] = xywh2xyxy(labels[:, 1:-1]) * 2000
     img = Image.fromarray(np.ones((2000, 2000, 3), dtype=np.uint8) * 255)
-    for cls, *box in labels[:1000]:
+    for cls, *box in labels[:1000, :-1]:
         ImageDraw.Draw(img).rectangle(box, width=1, outline=colors(cls))  # plot
     ax[1].imshow(img)
     ax[1].axis("off")
@@ -438,7 +439,7 @@ def plot_results(file="path/to/results.csv", dir=""):
     Example: from utils.plots import *; plot_results('path/to/results.csv')
     """
     save_dir = Path(file).parent if file else Path(dir)
-    fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
+    fig, ax = plt.subplots(2, 6, figsize=(20, 10), tight_layout=True)
     ax = ax.ravel()
     files = list(save_dir.glob("results*.csv"))
     assert len(files), f"No results.csv files found in {save_dir.resolve()}, nothing to plot."
@@ -447,7 +448,7 @@ def plot_results(file="path/to/results.csv", dir=""):
             data = pd.read_csv(f)
             s = [x.strip() for x in data.columns]
             x = data.values[:, 0]
-            for i, j in enumerate([1, 2, 3, 4, 5, 8, 9, 10, 6, 7]):
+            for i, j in enumerate([1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 7, 8]):
                 y = data.values[:, j].astype("float")
                 # y[y == 0] = np.nan  # don't show zero values
                 ax[i].plot(x, y, marker=".", label=f.stem, linewidth=2, markersize=8)  # actual results

@@ -601,7 +601,7 @@ def check_amp(model):
         return False  # AMP only used on CUDA devices
     # f = ROOT / "data" / "images" / "bus.jpg"  # image to check
     # im = f if f.exists() else "https://ultralytics.com/images/bus.jpg" if check_online() else np.ones((640, 640, 3))
-    im = np.ones((640, 640, 4))
+    im = np.ones((640, 640, 5))
     try:
         assert amp_allclose(deepcopy(model), im) or amp_allclose(DetectMultiBackend("yolov5n.pt", device), im)
         LOGGER.info(f"{prefix}checks passed ✅")
@@ -1036,7 +1036,7 @@ def non_max_suppression(
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - nm - 5  # number of classes
+    nc = prediction.shape[2] - nm - (5 + 1)  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
 
     # Settings
@@ -1049,8 +1049,8 @@ def non_max_suppression(
     merge = False  # use merge-NMS
 
     t = time.time()
-    mi = 5 + nc  # mask start index
-    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    mi = 5 + nc + 1  # mask start index
+    output = [torch.zeros((0, (6 + 1) + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -1070,19 +1070,21 @@ def non_max_suppression(
             continue
 
         # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        x[:, 5: 5 + nc] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
         # Box/Mask
         box = xywh2xyxy(x[:, :4])  # center_x, center_y, width, height) to (x1, y1, x2, y2)
         mask = x[:, mi:]  # zero columns if no masks
 
+        depth = x[:, mi-1:mi]
+
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
-            i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
+            i, j = (x[:, 5:5 + nc] > conf_thres).nonzero(as_tuple=False).T
+            x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i], depth[i]), 1)
         else:  # best class only
-            conf, j = x[:, 5:mi].max(1, keepdim=True)
-            x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+            conf, j = x[:, 5:mi-1].max(1, keepdim=True)
+            x = torch.cat((box, conf, j.float(), mask, depth), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:

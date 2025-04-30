@@ -7,18 +7,24 @@
             "request": "launch",
             "python": "/home/kj-chang/miniconda3/envs/yolo/bin/python",
             "console": "integratedTerminal",
-            "program": "${workspaceFolder}/train.py",
-            "args":[
-                "--weight", "",
-                "--cfg", "yolov5n.yaml",
-                "--data", "/home/kj-chang/carla-dataset/YOLOcarla-4/data.yaml",
-                "--batch", "32",
-                "--epochs", "1",
-            ]
-            // "program": "${workspaceFolder}/detect.py",
+            // "program": "${workspaceFolder}/train.py",
             // "args":[
-            //     "--weight", "runs/train/exp10${defaultBuildTask}/weights/best.pt",
-            //     "--source", "~/carla-dataset/YOLOcarla/images/test/",
+            //     "--weight", "",
+            //     "--cfg", "yolov5n.yaml",
+            //     "--data", "/mnt/ssd/kj-chang/traindata/YOLOcarla-5/data.yaml",
+            //     "--batch", "32",
+            //     "--epochs", "1",
+            // ]
+            "program": "${workspaceFolder}/detect.py",
+            "args":[
+                "--weight", "mymodel/5ch11/weights/best.pt",
+                "--source", "/mnt/ssd/kj-chang/traindata/YOLOcarla-5/images/test",
+                "--save-txt", 
+            ]
+            // "program": "${workspaceFolder}/val.py",
+            // "args":[
+            //     "--weight", "/home/kj-chang/rtk-gitlab/kj-fusion/yolov5/mymodel/depth_best/weights/best.pt",
+            //     "--data", "/mnt/ssd/kj-chang/traindata/YOLOcarla-5/data.yaml",
             // ]
         }
     ]

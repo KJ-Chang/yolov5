@@ -59,7 +59,7 @@ from utils.torch_utils import torch_distributed_zero_first
 
 # Parameters
 HELP_URL = "See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data"
-IMG_FORMATS = "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm"  # include image suffixes
+IMG_FORMATS = "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm", 'npy'  # include image suffixes
 VID_FORMATS = "asf", "avi", "gif", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ts", "wmv"  # include video suffixes
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv("RANK", -1))
@@ -391,18 +391,22 @@ class LoadImages:
             s = f"video {self.count + 1}/{self.nf} ({self.frame}/{self.frames}) {path}: "
 
         else:
-            # Read image
+            # Read image (npy)
             self.count += 1
-            im0 = cv2.imread(path, cv2.IMREAD_UNCHANGED)  # BGR
+            im0 = np.load(path) # RGBrr
+            im0 = im0[:, :, [2, 1, 0, 3, 4]] # RGBrr -> BGRrr
+
             assert im0 is not None, f"Image Not Found {path}"
             s = f"image {self.count}/{self.nf} {path}: "
 
         if self.transforms:
             im = self.transforms(im0)  # transforms
         else:
-            im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
+            im0_first4_ch = letterbox(im0[:, :, :4], self.img_size, stride=self.stride, auto=self.auto)[0] # padded resize
+            im0_last_ch = letterbox(im0[:, :, 4:], self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
+            im = np.dstack((im0_first4_ch, im0_last_ch))
             im = im.transpose((2, 0, 1)) # HWC to CHW
-            im[:3] = im[:3][::-1] # BGRr to RGBr
+            im[:3] = im[:3][::-1]  # BGRrr to RGBrr
             im = np.ascontiguousarray(im)  # contiguous
 
         return path, im, im0, self.cap, s
@@ -791,7 +795,11 @@ class LoadImagesAndLabels(Dataset):
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
-            img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+            
+            img_first4_ch, ratio, pad = letterbox(img[:, :, :4], shape, auto=False, scaleup=self.augment)
+            img_last_ch, _, _ = letterbox(img[:, :, 4:], shape, auto=False, scaleup=self.augment)
+            img = np.dstack((img_first4_ch, img_last_ch))
+
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
@@ -842,13 +850,13 @@ class LoadImagesAndLabels(Dataset):
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout
 
-        labels_out = torch.zeros((nl, 6))
+        labels_out = torch.zeros((nl, 7))
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
         # Convert
         img = img.transpose((2, 0, 1))  # HWC to CHW
-        img[:3] = img[:3][::-1] # BGRr to RGBr
+        img[:3] = img[:3][::-1] # BGRrr -> RGBrr
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
@@ -866,7 +874,8 @@ class LoadImagesAndLabels(Dataset):
         )
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
-                im = np.load(fn)
+                im = np.load(fn)  # RGBrr
+                im = im[:, :, [2, 1, 0, 3, 4]] # RGBrr -> BGRrr
             else:  # read image
                 im = cv2.imread(f, cv2.IMREAD_UNCHANGED)  # BGRr
                 assert im is not None, f"Image Not Found {f}"
@@ -1146,18 +1155,23 @@ def verify_image_label(args):
     im_file, lb_file, prefix = args
     nm, nf, ne, nc, msg, segments = 0, 0, 0, 0, "", []  # number (missing, found, empty, corrupt), message, segments
     try:
-        # verify images
-        im = Image.open(im_file)
-        im.verify()  # PIL verify
-        shape = exif_size(im)  # image size
-        assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
-        assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
-        if im.format.lower() in ("jpg", "jpeg"):
-            with open(im_file, "rb") as f:
-                f.seek(-2, 2)
-                if f.read() != b"\xff\xd9":  # corrupt JPEG
-                    ImageOps.exif_transpose(Image.open(im_file)).save(im_file, "JPEG", subsampling=0, quality=100)
-                    msg = f"{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved"
+        im = np.load(im_file)
+        shape = (im.shape[1], im.shape[0])
+        assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} < 10 pixels'
+        # if im_file_extension != 'npy':
+        #     # verify images
+        #     im = Image.open(im_file)
+        #     im.verify()  # PIL verify
+        #     shape = exif_size(im)  # image size
+        #     assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
+        #     assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
+        #     if im.format.lower() in ("jpg", "jpeg"):
+        #         with open(im_file, "rb") as f:
+        #             f.seek(-2, 2)
+        #             if f.read() != b"\xff\xd9":  # corrupt JPEG
+        #                 ImageOps.exif_transpose(Image.open(im_file)).save(im_file, "JPEG", subsampling=0, quality=100)
+        #                 msg = f"{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved"
+            
 
         # verify labels
         if os.path.isfile(lb_file):
@@ -1171,9 +1185,9 @@ def verify_image_label(args):
                 lb = np.array(lb, dtype=np.float32)
             nl = len(lb)
             if nl:
-                assert lb.shape[1] == 5, f"labels require 5 columns, {lb.shape[1]} columns detected"
+                assert lb.shape[1] == 6, f"labels require 6 columns, {lb.shape[1]} columns detected"
                 assert (lb >= 0).all(), f"negative label values {lb[lb < 0]}"
-                assert (lb[:, 1:] <= 1).all(), f"non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}"
+                assert (lb[:, 1:5] <= 1).all(), f"non-normalized or out of bounds coordinates {lb[:, 1:5][lb[:, 1:5] > 1]}"
                 _, i = np.unique(lb, axis=0, return_index=True)
                 if len(i) < nl:  # duplicate row check
                     lb = lb[i]  # remove duplicates
@@ -1182,10 +1196,12 @@ def verify_image_label(args):
                     msg = f"{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed"
             else:
                 ne = 1  # label empty
-                lb = np.zeros((0, 5), dtype=np.float32)
+                lb = np.zeros((0, 6), dtype=np.float32)
         else:
             nm = 1  # label missing
-            lb = np.zeros((0, 5), dtype=np.float32)
+            lb = np.zeros((0, 6), dtype=np.float32)
+        # normalized depth
+        lb[:, -1] /= 80.0
         return im_file, lb, shape, segments, nm, nf, ne, nc, msg
     except Exception as e:
         nc = 1

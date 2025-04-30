@@ -1,3 +1,3 @@
-python train.py --weights "" --data /home/kj-chang/carla-dataset/YOLOcarla-4/data.yaml --cfg yolov5n.yaml --batch-size -1 --epochs 100 --patience 10
+python train.py --weights "" --data /home/kj-chang/carla-dataset/YOLOcarla-5/data.yaml --cfg yolov5n.yaml --batch-size -1 --epochs 100 --patience 10
 
-python detect.py --weights=mymodel/4ch/weights/best.pt --source=/home/kj-chang/carla-dataset/YOLOcarla-4/images/test/
+python detect.py --weights=mymodel/5ch/weights/best.pt --source=/home/kj-chang/carla-dataset/YOLOcarla-5/images/test/
