@@ -1,4 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+# Ultralytics YOLOv5 🚀, AGPL-3.0 license
 """
 Validate a trained YOLOv5 detection model on a detection dataset.
 
@@ -393,8 +393,8 @@ def run(
 
         # Plot images
         if plots and batch_i < 3:
-            plot_images(im, targets, paths, save_dir / f"val_batch{batch_i}_labels.jpg", names)  # labels
-            plot_images(im, output_to_target(preds), paths, save_dir / f"val_batch{batch_i}_pred.jpg", names)  # pred
+            plot_images(im, targets, paths, save_dir / f"val_batch{batch_i}_labels.png", names)  # labels
+            plot_images(im, output_to_target(preds), paths, save_dir / f"val_batch{batch_i}_pred.png", names)  # pred
 
         callbacks.run("on_val_batch_end", batch_i, im, targets, paths, shapes, preds)
 

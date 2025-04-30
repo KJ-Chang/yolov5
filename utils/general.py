@@ -599,8 +599,9 @@ def check_amp(model):
     device = next(model.parameters()).device  # get model device
     if device.type in ("cpu", "mps"):
         return False  # AMP only used on CUDA devices
-    f = ROOT / "data" / "images" / "bus.jpg"  # image to check
-    im = f if f.exists() else "https://ultralytics.com/images/bus.jpg" if check_online() else np.ones((640, 640, 3))
+    # f = ROOT / "data" / "images" / "bus.jpg"  # image to check
+    # im = f if f.exists() else "https://ultralytics.com/images/bus.jpg" if check_online() else np.ones((640, 640, 3))
+    im = np.ones((640, 640, 4))
     try:
         assert amp_allclose(deepcopy(model), im) or amp_allclose(DetectMultiBackend("yolov5n.pt", device), im)
         LOGGER.info(f"{prefix}checks passed ✅")

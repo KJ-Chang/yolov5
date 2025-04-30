@@ -1,4 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+# Ultralytics YOLOv5 🚀, AGPL-3.0 license
 """Plotting utils."""
 
 import contextlib
@@ -171,7 +171,7 @@ def plot_images(images, targets, paths=None, fname="images.jpg", names=None):
             break
         x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
         im = im.transpose(1, 2, 0)
-        mosaic[y : y + h, x : x + w, :] = im
+        mosaic[y : y + h, x : x + w, :] = im[:, :, :3]  # 為了顯示因此排除雷達點(不影響)
 
     # Resize (optional)
     scale = max_size / ns / max(h, w)

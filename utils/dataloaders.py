@@ -1,4 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+# Ultralytics YOLOv5 🚀, AGPL-3.0 license
 """Dataloaders and dataset utils."""
 
 import contextlib
@@ -356,7 +356,8 @@ class LoadImages:
         else:
             self.cap = None
         assert self.nf > 0, (
-            f"No images or videos found in {p}. Supported formats are:\nimages: {IMG_FORMATS}\nvideos: {VID_FORMATS}"
+            f"No images or videos found in {p}. "
+            f"Supported formats are:\nimages: {IMG_FORMATS}\nvideos: {VID_FORMATS}"
         )
 
     def __iter__(self):
@@ -392,7 +393,7 @@ class LoadImages:
         else:
             # Read image
             self.count += 1
-            im0 = cv2.imread(path)  # BGR
+            im0 = cv2.imread(path, cv2.IMREAD_UNCHANGED)  # BGR
             assert im0 is not None, f"Image Not Found {path}"
             s = f"image {self.count}/{self.nf} {path}: "
 
@@ -400,7 +401,8 @@ class LoadImages:
             im = self.transforms(im0)  # transforms
         else:
             im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-            im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            im = im.transpose((2, 0, 1)) # HWC to CHW
+            im[:3] = im[:3][::-1] # BGRr to RGBr
             im = np.ascontiguousarray(im)  # contiguous
 
         return path, im, im0, self.cap, s
@@ -712,8 +714,8 @@ class LoadImagesAndLabels(Dataset):
         cache = mem_required * (1 + safety_margin) < mem.available  # to cache or not to cache, that is the question
         if not cache:
             LOGGER.info(
-                f"{prefix}{mem_required / gb:.1f}GB RAM required, "
-                f"{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, "
+                f'{prefix}{mem_required / gb:.1f}GB RAM required, '
+                f'{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, '
                 f"{'caching images ✅' if cache else 'not caching images ⚠️'}"
             )
         return cache
@@ -773,7 +775,8 @@ class LoadImagesAndLabels(Dataset):
         index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
-        if mosaic := self.mosaic and random.random() < hyp["mosaic"]:
+        mosaic = self.mosaic and random.random() < hyp["mosaic"]
+        if mosaic:
             # Load mosaic
             img, labels = self.load_mosaic(index)
             shapes = None
@@ -812,11 +815,16 @@ class LoadImagesAndLabels(Dataset):
 
         if self.augment:
             # Albumentations
-            img, labels = self.albumentations(img, labels)
+            img_rgb = img[:, :, :3]
+            img_radar = img[:, :, 3:]
+            img, labels = self.albumentations(img_rgb, labels)
             nl = len(labels)  # update after albumentations
 
             # HSV color-space
             augment_hsv(img, hgain=hyp["hsv_h"], sgain=hyp["hsv_s"], vgain=hyp["hsv_v"])
+
+            # 拼接雷達層
+            img = np.dstack((img, img_radar))
 
             # Flip up-down
             if random.random() < hyp["flipud"]:
@@ -839,7 +847,8 @@ class LoadImagesAndLabels(Dataset):
             labels_out[:, 1:] = torch.from_numpy(labels)
 
         # Convert
-        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        img = img.transpose((2, 0, 1))  # HWC to CHW
+        img[:3] = img[:3][::-1] # BGRr to RGBr
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
@@ -859,7 +868,7 @@ class LoadImagesAndLabels(Dataset):
             if fn.exists():  # load npy
                 im = np.load(fn)
             else:  # read image
-                im = cv2.imread(f)  # BGR
+                im = cv2.imread(f, cv2.IMREAD_UNCHANGED)  # BGRr
                 assert im is not None, f"Image Not Found {f}"
             h0, w0 = im.shape[:2]  # orig hw
             r = self.img_size / max(h0, w0)  # ratio
@@ -1160,7 +1169,8 @@ def verify_image_label(args):
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 lb = np.array(lb, dtype=np.float32)
-            if nl := len(lb):
+            nl = len(lb)
+            if nl:
                 assert lb.shape[1] == 5, f"labels require 5 columns, {lb.shape[1]} columns detected"
                 assert (lb >= 0).all(), f"negative label values {lb[lb < 0]}"
                 assert (lb[:, 1:] <= 1).all(), f"non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}"

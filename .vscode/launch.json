@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "YOLOV5 Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/home/kj-chang/miniconda3/envs/yolo/bin/python",
+            "console": "integratedTerminal",
+            "program": "${workspaceFolder}/train.py",
+            "args":[
+                "--weight", "",
+                "--cfg", "yolov5n.yaml",
+                "--data", "/home/kj-chang/carla-dataset/YOLOcarla-4/data.yaml",
+                "--batch", "32",
+                "--epochs", "1",
+            ]
+            // "program": "${workspaceFolder}/detect.py",
+            // "args":[
+            //     "--weight", "runs/train/exp10${defaultBuildTask}/weights/best.pt",
+            //     "--source", "~/carla-dataset/YOLOcarla/images/test/",
+            // ]
+        }
+    ]
+}

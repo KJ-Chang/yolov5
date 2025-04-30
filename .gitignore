@@ -1,4 +1,4 @@
-*.pt
+__pycache__/
 detect/
 mymodel/
-__pycache__/
+*.pt

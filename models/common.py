@@ -1,4 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+# Ultralytics YOLOv5 🚀, AGPL-3.0 license
 """Common modules."""
 
 import ast
@@ -173,6 +173,7 @@ class Bottleneck(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)
         self.add = shortcut and c1 == c2
+        # print(self.add)
 
     def forward(self, x):
         """Processes input through two convolutions, optionally adds shortcut if channel dimensions match; input is a
@@ -750,8 +751,6 @@ class DetectMultiBackend(nn.Module):
                         scale, zero_point = output["quantization"]
                         x = (x.astype(np.float32) - zero_point) * scale  # re-scale
                     y.append(x)
-            if len(y) == 2 and len(y[1].shape) != 4:
-                y = list(reversed(y))
             y = [x if isinstance(x, np.ndarray) else x.numpy() for x in y]
             y[0][..., :4] *= [w, h, w, h]  # xywh normalized to pixels
 
@@ -880,7 +879,7 @@ class AutoShape(nn.Module):
                 files.append(Path(f).with_suffix(".jpg").name)
                 if im.shape[0] < 5:  # image in CHW
                     im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
-                im = im[..., :3] if im.ndim == 3 else cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)  # enforce 3ch input
+                im = im[..., :4] if im.ndim == 3 else cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)  # enforce 4ch input
                 s = im.shape[:2]  # HWC
                 shape0.append(s)  # image shape
                 g = max(size) / max(s)  # gain
