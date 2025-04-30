@@ -352,7 +352,7 @@ def train(hyp, opt, device, callbacks):
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
-    scaler = torch.cuda.amp.GradScaler(enabled=amp)
+    scaler = torch.amp.GradScaler(device='cuda', enabled=amp)
     stopper, stop = EarlyStopping(patience=opt.patience), False
     compute_loss = ComputeLoss(model)  # init loss class
     callbacks.run("on_train_start")
@@ -409,7 +409,8 @@ def train(hyp, opt, device, callbacks):
                     imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
 
             # Forward
-            with torch.cuda.amp.autocast(amp):
+            # with torch.cuda.amp.autocast(amp):
+            with torch.amp.autocast(device_type='cuda'):
                 pred = model(imgs)  # forward
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 if RANK != -1:
@@ -591,8 +592,8 @@ def parse_opt(known=False):
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")
     parser.add_argument("--sync-bn", action="store_true", help="use SyncBatchNorm, only available in DDP mode")
     parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
-    parser.add_argument("--project", default=ROOT / "runs/train", help="save to project/name")
-    parser.add_argument("--name", default="exp", help="save to project/name")
+    parser.add_argument("--project", default=ROOT / "mymodel", help="save to project/name")
+    parser.add_argument("--name", default="3ch", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
     parser.add_argument("--quad", action="store_true", help="quad dataloader")
     parser.add_argument("--cos-lr", action="store_true", help="cosine LR scheduler")
